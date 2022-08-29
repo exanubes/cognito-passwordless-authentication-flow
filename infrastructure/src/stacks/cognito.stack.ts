@@ -16,6 +16,7 @@ import {
   PolicyStatement,
   ServicePrincipal,
 } from "aws-cdk-lib/aws-iam";
+import { ChallengeNameType } from "@aws-sdk/client-cognito-identity-provider";
 
 const keyAlias = "exanubes-mailer-key-alias";
 
@@ -30,6 +31,22 @@ export class CognitoStack extends Stack {
     const keyAliasArn = `arn:aws:kms:${region}:${account}:alias/${keyAlias}`;
     const customEmailer = this.createCustomEmailer(cmk, keyAliasArn);
     this.setPermissions(cmk, customEmailer);
+
+    const [defineChallenge, createChallenge, verifyChallenge] =
+      this.createCustomChallengeLambdas();
+
+    userPool.addTrigger(
+      UserPoolOperation.DEFINE_AUTH_CHALLENGE,
+      defineChallenge
+    );
+    userPool.addTrigger(
+      UserPoolOperation.CREATE_AUTH_CHALLENGE,
+      createChallenge
+    );
+    userPool.addTrigger(
+      UserPoolOperation.VERIFY_AUTH_CHALLENGE_RESPONSE,
+      verifyChallenge
+    );
 
     userPool.addTrigger(UserPoolOperation.CUSTOM_EMAIL_SENDER, customEmailer);
   }
@@ -62,7 +79,7 @@ export class CognitoStack extends Stack {
     const client = userPool.addClient("exanubes-user-pool-client", {
       userPoolClientName: "exanubes-cognito-app",
       authFlows: {
-        userPassword: true,
+        custom: true,
       },
       accessTokenValidity: Duration.days(1),
       idTokenValidity: Duration.days(1),
@@ -130,6 +147,70 @@ export class CognitoStack extends Stack {
 
     // Allow cognito to use lambda
     lambda.addPermission("exanubes-cognito-custom-mailer-permission", {
+      principal: new ServicePrincipal("cognito-idp.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+    });
+  }
+
+  private createCustomChallengeLambdas(): Function[] {
+    // challenge session expires after 3 minutes
+    const defineChallengeLambda = new Function(
+      this,
+      "define-challenge-lambda",
+      {
+        runtime: Runtime.NODEJS_14_X,
+        handler: "index.handler",
+        code: Code.fromAsset(join(__dirname, "..", "lambdas/define-challenge")),
+        environment: {
+          CHALLENGE_NAME: ChallengeNameType.CUSTOM_CHALLENGE,
+        },
+      }
+    );
+    const createChallengeLambda = new Function(
+      this,
+      "create-challenge-lambda",
+      {
+        runtime: Runtime.NODEJS_14_X,
+        handler: "index.handler",
+        code: Code.fromAsset(join(__dirname, "..", "lambdas/create-challenge")),
+        layers: [this.layer],
+        environment: {
+          SENDGRID_API_KEY: String(process.env.SENDGRID_API_KEY),
+        },
+      }
+    );
+    const verifyChallengeLambda = new Function(
+      this,
+      "verify-challenge-lambda",
+      {
+        runtime: Runtime.NODEJS_14_X,
+        handler: "index.handler",
+        code: Code.fromAsset(join(__dirname, "..", "lambdas/verify-challenge")),
+      }
+    );
+
+    CognitoStack.grantLambdaInvokePermission(
+      defineChallengeLambda,
+      "define-challenge-lambda"
+    );
+    CognitoStack.grantLambdaInvokePermission(
+      createChallengeLambda,
+      "create-challenge-lambda"
+    );
+    CognitoStack.grantLambdaInvokePermission(
+      verifyChallengeLambda,
+      "verify-challenge-lambda"
+    );
+
+    return [
+      defineChallengeLambda,
+      createChallengeLambda,
+      verifyChallengeLambda,
+    ];
+  }
+
+  private static grantLambdaInvokePermission(lambda: Function, alias: string) {
+    lambda.addPermission(`exanubes-cognito-invoke-permission-${alias}`, {
       principal: new ServicePrincipal("cognito-idp.amazonaws.com"),
       action: "lambda:InvokeFunction",
     });
