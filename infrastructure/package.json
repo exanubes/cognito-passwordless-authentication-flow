@@ -1,0 +1,39 @@
+{
+  "name": "infrastructure",
+  "version": "0.1.0",
+  "bin": {
+    "infrastructure": "src/index.js"
+  },
+  "scripts": {
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "build": "tsc && trash cdk.out && npm run cdk synth",
+    "cdk:destroy": "npm run cdk destroy -- --app cdk.out $npm_config_stacks --role-arn=arn:aws:iam::$(aws sts get-caller-identity --query 'Account' --output text):role/exanubes-cloudformation-access",
+    "cdk:deploy": "npm run cdk deploy -- --app cdk.out $npm_config_stacks --role-arn=arn:aws:iam::$(aws sts get-caller-identity --query 'Account' --output text):role/exanubes-cloudformation-access"
+  },
+  "devDependencies": {
+    "@aws-crypto/client-node": "^3.1.1",
+    "@sendgrid/mail": "^7.7.0",
+    "@types/aws-lambda": "^8.10.102",
+    "@types/jest": "^27.5.2",
+    "@types/node": "10.17.27",
+    "@types/prettier": "2.6.0",
+    "aws-cdk": "2.35.0",
+    "aws-lambda": "^1.0.7",
+    "base64-js": "^1.5.1",
+    "jest": "^27.5.1",
+    "trash-cli": "^5.0.0",
+    "ts-jest": "^27.1.4",
+    "ts-node": "^10.9.1",
+    "typescript": "~3.9.7"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.154.0",
+    "@exanubes/cdk-utils": "^0.0.6",
+    "aws-cdk-lib": "2.35.0",
+    "constructs": "^10.0.0",
+    "dotenv": "^16.0.1",
+    "source-map-support": "^0.5.21"
+  }
+}

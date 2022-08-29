@@ -1,0 +1,18 @@
+{
+  "name": "cognito-custom-auth-flow",
+  "scripts": {
+    "start": "concurrently npm:start:*",
+    "start:backend": "npm --prefix ./backend run start:dev",
+    "start:frontend": "npm --prefix ./frontend start",
+    "remove-modules": "trash */node_modules",
+    "install-modules": "concurrently npm:install:*",
+    "install:backend": "npm --prefix ./backend install",
+    "install:frontend": "npm --prefix ./frontend install",
+    "install:infrastructure": "npm --prefix ./infrastructure install",
+    "install:infrastructure:layer": "npm --prefix ./infrastructure/src/layers/mailer-libs/nodejs install"
+  },
+  "devDependencies": {
+    "concurrently": "^7.3.0",
+    "trash-cli": "^5.0.0"
+  }
+}

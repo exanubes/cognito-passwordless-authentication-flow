@@ -1,0 +1,10 @@
+.idea/
+.DS_Store
+**/node_modules/
+**/dist/
+**/.env
+**/.DS_Store
+**/.idea
+**/cdk.out/
+**/*.d.ts
+**/infrastructure/src/**/*.js
