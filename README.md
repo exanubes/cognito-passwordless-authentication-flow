@@ -8,6 +8,7 @@ This repository is using AWS CDK v2 and is not compatible with AWS CDK v1 bootst
 
 - Run `npm install` in the root of the project
 - Run `npm run install-modules` in the root of the project to install modules for all subdirectories
+- Run `npm run start` in the root of the project to run backend and frontend applications simultaneously
 - You can remove modules from all subdirectories with `npm run remove-modules`
 
 ### CDK Infrastructure
