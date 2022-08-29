@@ -27,7 +27,7 @@ exports.handler = async (event: CognitoTriggerEvent) => {
       to: `${event.userName} <${user.email}>`,
       from: "Exanubes.com <newsletter@exanubes.com>",
       subject: `[${event.triggerSource}] Welcome to Exanubes.com`,
-      text: `Welcome to exanubes.com,\njoin us by going to http://localhost:3001/verify?code=${plainTextCode}&username=${event.userName}`,
+      text: `Welcome to exanubes.com,\njoin us by going to http://localhost:4000/verify?code=${plainTextCode}&username=${event.userName}`,
     };
 
     switch (event.triggerSource) {
