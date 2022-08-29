@@ -5,7 +5,6 @@
     "@aws-crypto/client-node": "^3.1.1",
     "@exanubes/cdk-utils": "^0.0.6",
     "@sendgrid/mail": "^7.7.0",
-    "aws-lambda": "*",
     "base64-js": "^1.5.1"
   }
 }
