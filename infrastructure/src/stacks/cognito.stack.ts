@@ -101,7 +101,9 @@ export class CognitoStack extends Stack {
     return new Key(this, "KMS-Symmetric-Key", {
       keySpec: KeySpec.SYMMETRIC_DEFAULT,
       alias: keyAlias,
+      description: "cdk created key for aws cognito blog series",
       enableKeyRotation: false,
+      removalPolicy: RemovalPolicy.DESTROY,
     });
   }
 
