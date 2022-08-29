@@ -1,19 +1,22 @@
 import { Injectable } from '@nestjs/common';
+import { generateRandomString } from '@exanubes/cdk-utils';
 import {
   AuthFlowType,
+  ChallengeNameType,
   CognitoIdentityProviderClient,
   ConfirmSignUpCommand,
   ConfirmSignUpCommandInput,
-  GetUserCommand,
-  GetUserCommandInput,
   InitiateAuthCommand,
   InitiateAuthCommandInput,
+  RespondToAuthChallengeCommand,
+  RespondToAuthChallengeCommandInput,
   SignUpCommand,
   SignUpCommandInput,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { SignUpDto } from './dto/sign-up.dto';
 import { LoginDto } from './dto/login.dto';
 import { AwsConfigService } from '../config/aws-config.service';
+import { VerifyLoginDto } from './dto/verify-login.dto';
 
 @Injectable()
 export class AuthService {
@@ -27,9 +30,10 @@ export class AuthService {
       },
     });
   }
-  async signup({ password, username, email }: SignUpDto) {
+
+  async signup({ username, email }: SignUpDto) {
     const input: SignUpCommandInput = {
-      Password: password,
+      Password: generateRandomString(),
       Username: username,
       ClientId: this.awsConfigService.userPoolClientId,
       UserAttributes: [{ Name: 'email', Value: email }],
@@ -38,7 +42,7 @@ export class AuthService {
     return this.client.send(command);
   }
 
-  async verifySignup(code: string, username: string) {
+  async verifySignup({ code, username }) {
     const input: ConfirmSignUpCommandInput = {
       ClientId: this.awsConfigService.userPoolClientId,
       Username: username,
@@ -48,16 +52,29 @@ export class AuthService {
     return this.client.send(command);
   }
 
-  async login({ username, password }: LoginDto) {
+  async login({ username }: LoginDto) {
     const input: InitiateAuthCommandInput = {
       ClientId: this.awsConfigService.userPoolClientId,
-      AuthFlow: AuthFlowType.USER_PASSWORD_AUTH,
+      AuthFlow: AuthFlowType.CUSTOM_AUTH,
       AuthParameters: {
         USERNAME: username,
-        PASSWORD: password,
       },
     };
     const command = new InitiateAuthCommand(input);
+    return this.client.send(command);
+  }
+
+  async verifyLogin({ code, username, session }: VerifyLoginDto) {
+    const input: RespondToAuthChallengeCommandInput = {
+      ClientId: this.awsConfigService.userPoolClientId,
+      ChallengeName: ChallengeNameType.CUSTOM_CHALLENGE,
+      Session: session,
+      ChallengeResponses: {
+        ANSWER: code,
+        USERNAME: username,
+      },
+    };
+    const command = new RespondToAuthChallengeCommand(input);
     const response = await this.client.send(command);
     return response.AuthenticationResult;
   }
