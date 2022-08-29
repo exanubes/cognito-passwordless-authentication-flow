@@ -5,42 +5,79 @@ import {
   Stack,
   StackProps,
 } from "aws-cdk-lib";
+import { UserPool, UserPoolOperation } from "aws-cdk-lib/aws-cognito";
+import { Key, KeySpec } from "aws-cdk-lib/aws-kms";
+import { Code, Function, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
+import { join } from "path";
 import { Construct } from "constructs";
-import {
-  UserPool,
-  UserPoolOperation,
-  VerificationEmailStyle,
-} from "aws-cdk-lib/aws-cognito";
 import {
   Effect,
   Policy,
   PolicyStatement,
-  Role,
   ServicePrincipal,
 } from "aws-cdk-lib/aws-iam";
-import { Key, KeySpec } from "aws-cdk-lib/aws-kms";
-import { Code, Function, Runtime } from "aws-cdk-lib/aws-lambda";
-import { join } from "path";
 
-interface Props extends StackProps {}
-
-const keyAlias = "exanubes-custom-emailer-key";
+const keyAlias = "exanubes-mailer-key-alias";
 
 export class CognitoStack extends Stack {
-  constructor(scope: Construct, id: string, props: Props) {
+  private readonly layer: LayerVersion;
+  constructor(scope: Construct, id: string, props: StackProps) {
     super(scope, id, props);
-
+    this.layer = this.createLayer();
+    const { region, account } = Stack.of(this);
     const cmk = this.createCustomManagedKey();
     const userPool = this.createUserPool(cmk);
-    const customEmailer = this.createCustomEmailer(cmk);
-
-    const role = new Role(this, "exanubes-user-pool-role", {
-      assumedBy: new ServicePrincipal("ecs-tasks.amazonaws.com"),
-    });
-    userPool.grant(role, "cognito-idp:AdminCreateUser");
+    const keyAliasArn = `arn:aws:kms:${region}:${account}:alias/${keyAlias}`;
+    const customEmailer = this.createCustomEmailer(cmk, keyAliasArn);
     this.setPermissions(cmk, customEmailer);
 
     userPool.addTrigger(UserPoolOperation.CUSTOM_EMAIL_SENDER, customEmailer);
+  }
+  private createLayer(): LayerVersion {
+    return new LayerVersion(this, "exanubes-lambda-layer", {
+      code: Code.fromAsset(join(__dirname, "..", "layers/mailer-libs")),
+      compatibleRuntimes: [Runtime.NODEJS_14_X, Runtime.NODEJS_12_X],
+      description: "node_modules for cognito custom mailer",
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+  }
+
+  private createUserPool(cmk: Key): UserPool {
+    const userPool = new UserPool(this, "exanubes-user-pool", {
+      userPoolName: "exanubes_user_pool",
+      selfSignUpEnabled: true,
+      signInAliases: {
+        username: true,
+        email: true,
+      },
+      removalPolicy: RemovalPolicy.DESTROY,
+
+      standardAttributes: {
+        email: { required: true, mutable: false },
+      },
+      autoVerify: { email: true },
+      customSenderKmsKey: cmk,
+    });
+
+    const client = userPool.addClient("exanubes-user-pool-client", {
+      userPoolClientName: "exanubes-cognito-app",
+      authFlows: {
+        userPassword: true,
+      },
+      accessTokenValidity: Duration.days(1),
+      idTokenValidity: Duration.days(1),
+      refreshTokenValidity: Duration.days(30),
+      preventUserExistenceErrors: true,
+    });
+
+    new CfnOutput(this, "exanubes-user-pool-client-id", {
+      value: client.userPoolClientId,
+    });
+    new CfnOutput(this, "exanubes-user-pool-id", {
+      value: userPool.userPoolId,
+    });
+
+    return userPool;
   }
 
   private createCustomManagedKey(): Key {
@@ -48,6 +85,22 @@ export class CognitoStack extends Stack {
       keySpec: KeySpec.SYMMETRIC_DEFAULT,
       alias: keyAlias,
       enableKeyRotation: false,
+    });
+  }
+
+  private createCustomEmailer(cmk: Key, keyAliasArn: string): Function {
+    return new Function(this, "custom-emailer-lambda", {
+      code: Code.fromAsset(
+        join(__dirname, "..", "lambdas/custom-email-sender")
+      ),
+      runtime: Runtime.NODEJS_14_X,
+      handler: "index.handler",
+      environment: {
+        KEY_ID: cmk.keyArn,
+        KEY_ALIAS: keyAliasArn,
+        SENDGRID_API_KEY: String(process.env.SENDGRID_API_KEY),
+      },
+      layers: [this.layer],
     });
   }
 
@@ -79,69 +132,6 @@ export class CognitoStack extends Stack {
     lambda.addPermission("exanubes-cognito-custom-mailer-permission", {
       principal: new ServicePrincipal("cognito-idp.amazonaws.com"),
       action: "lambda:InvokeFunction",
-    });
-  }
-
-  private createUserPool(cmk: Key): UserPool {
-    const userPool = new UserPool(this, "exanubes-user-pool", {
-      userPoolName: "exanubes_user_pool",
-      selfSignUpEnabled: true,
-      userVerification: {
-        emailSubject: "[Exanubes] - Verify your email",
-        emailBody: "Your verification code is {####}",
-        emailStyle: VerificationEmailStyle.CODE,
-        smsMessage: "Your verification code is {####}",
-      },
-      userInvitation: {
-        emailSubject: "[Exanubes] - Invitation to join our community",
-        emailBody:
-          "Hi {username}, you have been invited to join our community. Your temporary password is {####}",
-        smsMessage:
-          "Hi {username}, you have been invited to join our community. Your temporary password is {####}",
-      },
-      signInAliases: {
-        username: true,
-        email: true,
-      },
-      removalPolicy: RemovalPolicy.DESTROY,
-
-      standardAttributes: {
-        email: { required: true, mutable: false },
-      },
-      autoVerify: { email: true },
-      customSenderKmsKey: cmk,
-    });
-    const client = userPool.addClient("exanubes-user-pool-client", {
-      userPoolClientName: "exanubes-cognito-app",
-      authFlows: {
-        userPassword: true,
-      },
-      accessTokenValidity: Duration.days(1),
-      idTokenValidity: Duration.days(1),
-      refreshTokenValidity: Duration.days(30),
-      preventUserExistenceErrors: true,
-    });
-    new CfnOutput(this, "exanubes-user-pool-client-id", {
-      value: client.userPoolClientId,
-    });
-    new CfnOutput(this, "exanubes-user-pool-id", {
-      value: userPool.userPoolId,
-    });
-    return userPool;
-  }
-
-  private createCustomEmailer(cms: Key): Function {
-    return new Function(this, "custom-emailer-lambda", {
-      code: Code.fromAsset(
-        join(__dirname, "..", "lambdas/custom-email-sender")
-      ),
-      runtime: Runtime.NODEJS_14_X,
-      handler: "index.handler",
-      environment: {
-        KEY_ID: cms.keyArn,
-        KEY_ALIAS: `arn:aws:kms:eu-central-1:145719986153:alias/${keyAlias}`,
-        SENDGRID_API_KEY: String(process.env.SENDGRID_API_KEY),
-      },
     });
   }
 }
